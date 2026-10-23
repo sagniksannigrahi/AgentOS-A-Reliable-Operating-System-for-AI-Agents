@@ -1,0 +1,10 @@
+{
+  "title": "Implement textkit helpers",
+  "description": "Implement slugify in text.py, word_count in counts.py, and summary in report.py (summary uses the other two).",
+  "workspace_seed": "textkit",
+  "acceptance_criteria": [
+    {"id": "tests", "description": "the full test suite passes", "kind": "tests_pass", "command": ["pytest", "-q"]},
+    {"id": "report-exists", "description": "report.py exists", "kind": "file_exists", "path": "report.py"}
+  ],
+  "options": {"require_plan_approval": true}
+}

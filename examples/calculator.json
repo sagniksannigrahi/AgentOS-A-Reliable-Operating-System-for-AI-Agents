@@ -1,0 +1,10 @@
+{
+  "title": "Implement multiply and divide",
+  "description": "Implement multiply and divide in calc.py. divide(a, 0) must raise ValueError('division by zero'). Do not modify the tests.",
+  "workspace_seed": "calculator",
+  "acceptance_criteria": [
+    {"id": "tests", "description": "the full test suite passes", "kind": "tests_pass", "command": ["pytest", "-q"]},
+    {"id": "no-stub", "description": "no NotImplementedError stubs remain", "kind": "file_not_contains", "path": "calc.py", "text": "NotImplementedError"}
+  ],
+  "options": {}
+}

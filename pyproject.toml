@@ -1,0 +1,69 @@
+[project]
+name = "agentos"
+version = "0.1.0"
+description = "A reliable, observable operating system for multi-agent AI workflows."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi==0.161.1",
+    "uvicorn[standard]==0.54.0",
+    "pydantic==2.14.1",
+    "pydantic-settings>=2.6,<3",
+    "sqlalchemy[asyncio]==2.1.6",
+    "alembic==1.20.1",
+    "psycopg[binary,pool]==3.3.6",
+    "langgraph==1.2.16",
+    "langgraph-checkpoint-postgres==3.2.0",
+    "redis==8.1.0",
+    "structlog==26.1.0",
+    "prometheus-client==0.26.0",
+    "opentelemetry-api==1.45.1",
+    "opentelemetry-sdk==1.45.1",
+    "opentelemetry-exporter-otlp-proto-http==1.45.1",
+    "anthropic==2.1.0",
+    "httpx>=0.27,<1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-asyncio==1.4.0",
+    "pgserver==0.1.4",
+    "fakeredis==2.40.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[project.scripts]
+agentos-api = "app.main:run"
+agentos-worker = "app.worker.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S", "RUF"]
+# E501: the formatter owns line length. S311: `random` is only used for retry jitter and seeded
+# simulations, never for security. RUF001/2: arrows and dashes in strings/docstrings are intended.
+ignore = ["S101", "RUF012", "B008", "S603", "S607", "E501", "S311", "RUF001", "RUF002", "ASYNC109", "UP046", "UP047"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S108"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true

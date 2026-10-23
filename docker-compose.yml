@@ -1,0 +1,116 @@
+# AgentOS local environment.
+#   docker compose up --build
+# Dashboard http://localhost:5173 · API http://localhost:8000/docs · Grafana http://localhost:3000
+# Jaeger http://localhost:16686 · Prometheus http://localhost:9090
+name: agentos
+
+x-app-env: &app-env
+  AGENTOS_DATABASE_URL: postgresql+psycopg://agentos:agentos@postgres:5432/agentos
+  AGENTOS_REDIS_URL: redis://redis:6379/0
+  AGENTOS_LLM_PROVIDER: ${AGENTOS_LLM_PROVIDER:-fake}
+  AGENTOS_LLM_MODEL: ${AGENTOS_LLM_MODEL:-claude-opus-5-5}
+  AGENTOS_ANTHROPIC_API_KEY: ${AGENTOS_ANTHROPIC_API_KEY:-}
+  AGENTOS_EVALUATION_MODE: ${AGENTOS_EVALUATION_MODE:-true}
+  AGENTOS_BOOTSTRAP_API_KEY: ${AGENTOS_BOOTSTRAP_API_KEY:-}
+  AGENTOS_ALLOW_SELF_APPROVAL: ${AGENTOS_ALLOW_SELF_APPROVAL:-false}
+  AGENTOS_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+  AGENTOS_SANDBOX_BACKEND: ${AGENTOS_SANDBOX_BACKEND:-docker}
+  AGENTOS_SANDBOX_IMAGE: agentos-sandbox:latest
+  # Sibling sandbox containers bind-mount workspaces through the HOST docker daemon, so the
+  # workspace directory must have the same absolute path inside the worker and on the host.
+  AGENTOS_WORKSPACE_ROOT: ${AGENTOS_HOST_WORKSPACES:-/tmp/agentos-workspaces}
+  AGENTOS_ARTIFACT_ROOT: /data/artifacts
+  AGENTOS_LOG_JSON: "true"
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: agentos
+      POSTGRES_PASSWORD: agentos   # local development only
+      POSTGRES_DB: agentos
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentos -d agentos"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  sandbox-image:
+    # Builds the image used for running agent-written tests; exits immediately.
+    build: {context: ., dockerfile: sandbox.Dockerfile}
+    image: agentos-sandbox:latest
+    command: ["true"]
+    restart: "no"
+
+  migrate:
+    build: .
+    image: agentos:latest
+    command: ["python", "-m", "app.cli", "migrate"]
+    environment: *app-env
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  api:
+    image: agentos:latest
+    command: ["python", "-m", "app.cli", "api"]
+    environment: *app-env
+    ports: ["127.0.0.1:8000:8000"]
+    volumes: [artifacts:/data/artifacts]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+  worker:
+    image: agentos:latest
+    command: ["python", "-m", "app.cli", "worker"]
+    environment: *app-env
+    user: root   # needs the docker socket to start sandbox containers; see docs/THREAT_MODEL.md
+    volumes:
+      - artifacts:/data/artifacts
+      - ${AGENTOS_HOST_WORKSPACES:-/tmp/agentos-workspaces}:${AGENTOS_HOST_WORKSPACES:-/tmp/agentos-workspaces}
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      sandbox-image: {condition: service_completed_successfully}
+    deploy:
+      replicas: 1
+
+  dashboard:
+    build: ./frontend
+    ports: ["127.0.0.1:5173:80"]
+    depends_on: [api]
+
+  jaeger:
+    image: jaegertracing/jaeger:2.11.0
+    ports: ["127.0.0.1:16686:16686"]
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    volumes: [./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+    ports: ["127.0.0.1:9090:9090"]
+
+  grafana:
+    image: grafana/grafana:12.2.1
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [prometheus, jaeger]
+
+volumes:
+  pgdata:
+  artifacts:
